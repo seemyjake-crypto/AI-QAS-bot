@@ -1,40 +1,51 @@
 export async function onRequestPost(context) {
-    try {
-        const { question } = await context.request.json();
-        const API_KEY = context.env.GROQ_API_KEY;
+  try {
+    const { request, env } = context;
+    const body = await request.json();
+    const userPrompt = body.prompt;
 
-        if (!API_KEY) {
-            return new Response(JSON.stringify({ answer: "API Key missing in configuration." }), { status: 500 });
-        }
-
-        const groqResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${API_KEY}`,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                model: "llama-3.3-70b-versatile",
-                messages: [
-                    { role: "system", content: "You are a helpful, precise Q&A assistant." },
-                    { role: "user", content: question }
-                ],
-                max_tokens: 1000
-            })
-        });
-
-        const data = await groqResponse.json();
-        
-        if (data.choices && data.choices.length > 0) {
-            const aiReply = data.choices[0].message.content;
-            return new Response(JSON.stringify({ answer: aiReply }), {
-                headers: { "Content-Type": "application/json" }
-            });
-        } else {
-            return new Response(JSON.stringify({ answer: "Failed to generate answer." }), { status: 500 });
-        }
-
-    } catch (err) {
-        return new Response(JSON.stringify({ answer: "Server connection failure." }), { status: 500 });
+    if (!userPrompt) {
+      return new Response(JSON.stringify({ error: "Prompt is required" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" }
+      });
     }
+
+    const groqResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${env.GROQ_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "llama-3.1-8b-instant",
+        messages: [
+          { role: "system", content: "You are a helpful and clear Q&A assistant." },
+          { role: "user", content: userPrompt }
+        ]
+      })
+    });
+
+    const data = await groqResponse.json();
+
+    if (!groqResponse.ok) {
+      return new Response(JSON.stringify({ error: data.error?.message || "Groq API error" }), {
+        status: groqResponse.status,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+
+    const reply = data.choices[0].message.content;
+
+    return new Response(JSON.stringify({ reply }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    });
+
+  } catch (err) {
+    return new Response(JSON.stringify({ error: err.message }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
 }
